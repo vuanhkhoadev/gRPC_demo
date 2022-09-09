@@ -5,10 +5,16 @@ using gRPC_Service.Domain.Context;
 using gRPC_Service.Domain.Interfaces;
 using gRPC_Service.Infrastructure.Implements;
 using gRPC_Service.Services;
+using Hangfire;
+using Hangfire.MemoryStorage;
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using System.Reflection;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
+SymmetricSecurityKey SecurityKey = new SymmetricSecurityKey(Guid.NewGuid().ToByteArray());
 
 // Additional configuration is required to successfully run gRPC on macOS.
 // For instructions on how to configure Kestrel and gRPC clients on macOS, visit https://go.microsoft.com/fwlink/?linkid=2099682
@@ -30,14 +36,52 @@ IMapper mapper = mapperConfig.CreateMapper();
 builder.Services.AddSingleton(mapper);
 builder.Services.AddLogging();
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(JwtBearerDefaults.AuthenticationScheme, policy =>
+    {
+        policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
+        policy.RequireClaim(ClaimTypes.Name);
+    });
+});
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateActor = false,
+                ValidateLifetime = true,
+                IssuerSigningKey = SecurityKey
+            };
+    });
+
+builder.Services.AddHangfireServer();
+builder.Services.AddHangfire(config =>
+{
+    config.UseMemoryStorage();
+});
+
 var app = builder.Build();
 IConfiguration configuration = app.Configuration;
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 // Configure the HTTP request pipeline.
-app.MapGrpcService<GreeterService>();
-app.MapGrpcService<AuthService>();
-app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
+app.UseRouting();
+
+app.UseHangfireDashboard();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapGrpcService<GreeterService>();
+    endpoints.MapGrpcService<AuthService>();
+});
 
 app.Run();

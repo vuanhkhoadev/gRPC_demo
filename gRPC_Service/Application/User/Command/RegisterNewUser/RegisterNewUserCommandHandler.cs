@@ -3,6 +3,7 @@ using gRPC_Service.API.Application.User.Command.RegisterNewUser.Models;
 using gRPC_Service.API.Helpers;
 using gRPC_Service.Domain.Interfaces;
 using gRPC_Service.Infrastructure.Implements;
+using Hangfire;
 using MediatR;
 
 namespace gRPC_Service.API.Application.User.Command.RegisterNewUser
